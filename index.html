@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>Island RPG</title>
+<style>html,body{margin:0;padding:0;width:100%;height:100%;background:#050505;overflow:hidden;touch-action:none;user-select:none;font-family:Arial,sans-serif}#g{position:absolute;top:0;left:0;width:100%;height:100%;touch-action:none}#err{position:absolute;top:0;left:0;width:100%;background:#e74c3c;color:#fff;font:14px monospace;padding:10px;display:none;z-index:9999}</style>
+<script>window.onerror=function(m,u,l){var e=document.getElementById('err');if(e){e.style.display='block';e.innerHTML+='ОШИБКА: '+m+'<br>Строка: '+l;}}</script>
+</head>
+<body><div id="err"></div><canvas id="g" width="960" height="540"></canvas><script>
+'use strict';
+var c=document.getElementById('g'),x=c.getContext('2d'),W=960,H=540;
+var ac;
+function initA(){if(!ac){var A=window.AudioContext||window.webkitAudioContext;if(A)ac=new A();}if(ac&&ac.state==='suspended')ac.resume();}
+function snd(f,t,d,v,s){if(!ac)return;try{var o=ac.createOscillator(),g=ac.createGain();o.type=t;o.frequency.setValueAtTime(f,ac.currentTime);if(s)o.frequency.exponentialRampToValueAtTime(s,ac.currentTime+d);g.gain.setValueAtTime(v||0.1,ac.currentTime);g.gain.exponentialRampToValueAtTime(0.01,ac.currentTime+d);o.connect(g);g.connect(ac.destination);o.start();o.stop(ac.currentTime+d);}catch(e){}}
+function sClick(){snd(600,'square',0.1,0.1,200);}function sHit(){snd(150,'sawtooth',0.3,0.2,30);}function sShoot(){snd(800,'square',0.1,0.1,300);}function sDie(){snd(300,'sawtooth',1,0.3,10);}function sLoot(){snd(800,'triangle',0.2,0.1,1600);}
+
+var SK='rpg_v25',sv={coins:0,mLvl:1,eW:'sword',eS:'none',oW:['sword'],oS:['none'],P:{armor:0,vamp:0,double:0,crit:0,cdr:0,merc:0},C:{heal:2,revive:1,bomb:0,freeze:0,speed:0},Cr:{s:0,m:0,l:0},quest:null,qDate:'',best:0};
+try{var ss=localStorage.getItem(SK);if(ss){var s=JSON.parse(ss);if(s){for(var k in s)sv[k]=s[k];}}}catch(e){}
+function save(){try{localStorage.setItem(SK,JSON.stringify(sv));}catch(e){}}
+
+var SKS={none:{n:'Рыцарь',c:'#3498db',p:0},gold:{n:'Золотой',c:'#f1c40f',p:1000},neon:{n:'Ниндзя',c:'#00ffcc',p:2500},robot:{n:'Робот',c:'#95a5a6',p:5000}};
+var WPS={sword:{n:'Меч',d:2,cd:0.2,t:'melee',c:'#ecf0f1',p:0},axe:{n:'Топор',d:5,cd:0.5,t:'arc',c:'#f39c12',p:800},bow:{n:'Лук',d:3,cd:0.3,t:'multi',c:'#2ecc71',p:1500},staff:{n:'Посох',d:7,cd:0.6,t:'magic',c:'#9b59b6',p:3000}};
+var ETS={gob:{hp:15,s:90,d:12,r:16,c:'#2ecc71',sc:10,t:'m'},bat:{hp:10,s:180,d:15,r:14,c:'#8e44ad',sc:15,t:'f'},orc:{hp:60,s:50,d:25,r:24,c:'#d35400',sc:30,t:'t'},shoot:{hp:20,s:80,d:15,r:16,c:'#3498db',sc:25,t:'r'}};
+var BSS={k:{n:'Король',hp:800,s:70,d:40,r:45,c:'#27ae60',sc:500,r:1},d:{n:'Демон',hp:1500,s:100,d:60,r:50,c:'#e74c3c',sc:1000,r:1}};
+var CRS={s:{n:'Малый',p:300,c:'#8e44ad'},m:{n:'Средний',p:1000,c:'#2980b9'},l:{n:'Большой',p:3000,c:'#c0392b'}};
+var ITM=[{i:'heal',n:'Аптечка',p:200,c:'#e74c3c',t:'c'},{i:'revive',n:'Возрождение',p:1000,c:'#f1c40f',t:'c'},{i:'bomb',n:'Бомба',p:500,c:'#d35400',t:'c'},{i:'armor',n:'Броня',p:1500,c:'#7f8c8d',t:'p'},{i:'vamp',n:'Вампиризм',p:2000,c:'#c0392b',t:'p'},{i:'double',n:'Двойной выстрел',p:3000,c:'#9b59b6',t:'p'},{i:'crit',n:'Крит',p:2500,c:'#e67e22',t:'p'},{i:'cdr',n:'Перезарядка',p:1800,c:'#34495e',t:'p'},{i:'merc',n:'Ботинки',p:4000,c:'#00bcd4',t:'p'}];
+
+var S='menu',M='camp',L=1,Sc=0,CE=0,bul=[],en=[],eb=[],pt=[],obs=[],pck=[],txt=[],bts=[],lt=Date.now(),shk=0,shkI=0,step=0;
+var p={x:W/2,y:H/2,r:18,hp:100,mh:100,cd:0,inv:0,ax:1,ay:0,wp:null,dmg:0,s:220,fr:0,sp:0};
+var tL={id:null,dx:0,dy:0,nx:0,ny:0},tR={id:null,dx:0,dy:0,act:0},tA={id:null};
+var LJ={x:120,y:H-120,R:70},RJ={x:W-120,y:H-120,R:70},AJ={x:W-120,y:H-220,R:40};
+var st=0,sw=1,ss='break',stim=3,toSpawn=0,ab={t:0,cd:0},tab='items',itab='weapons',canim={act:0,t:0,rew:'',c:'#fff'};
+
+if(sv.qDate!==new Date().toDateString()){
+  var qt=[{t:'kill',n:15,x:'Убить 15 врагов'},{t:'lvl',n:2,x:'Пройти 2 уровня'},{t:'surv',n:60,x:'Выжить 60 секунд'}];
+  var rq=qt[Math.floor(Math.random()*qt.length)];
+  sv.quest={t:rq.t,tg:rq.n,x:rq.x,p:0,cl:0};sv.qDate=new Date().toDateString();save();
+}
+
+function clamp(v,a,b){return Math.max(a,Math.min(b,v));}function dist(x1,y1,x2,y2){var dx=x2-x1,dy=y2-y1;return Math.sqrt(dx*dx+dy*dy);}function cp(cx,cy){var r=c.getBoundingClientRect();return{x:(cx-r.left)*W/r.width,y:(cy-r.top)*H/r.height};}function aT(t,x,y,c){txt.push({t:t,x:x,y:y,l:1,c:c});}
+
+function apply(){var w=WPS[sv.eW];p.mh=100+sv.P.armor*10;p.hp=p.mh;p.s=220*(1+sv.P.merc*0.2);p.dmg=w.d+sv.P.crit;p.wp=w;p.wp.cd=Math.max(0.05,w.cd-sv.P.cdr*0.05);}
+window.startLvl=function(n){
+  if(typeof n!=='number')n=1;M='camp';L=n;apply();p.x=W/2;p.y=H/2;p.inv=1;p.cd=0;ab.cd=0;ab.t=0;p.fr=0;p.sp=0;
+  bul=[];en=[];eb=[];pt=[];obs=[];pck=[];shk=0;txt=[];
+  for(var i=0;i<3;i++)obs.push({x:150+Math.random()*(W-300),y:150+Math.random()*(H-300),r:35});
+  toSpawn=5+(L*2);for(var i=0;i<Math.min(5,toSpawn);i++){sE();toSpawn--;}
+  if(L%5===0)sB();S='play';tL.id=null;tR.id=null;tR.act=0;tA.id=null;
+};
+window.startSurv=function(){
+  M='surv';apply();p.x=W/2;p.y=H/2;p.inv=1;p.cd=0;ab.cd=0;ab.t=0;p.fr=0;p.sp=0;
+  bul=[];en=[];eb=[];pt=[];obs=[];pck=[];shk=0;txt=[];
+  st=0;sw=1;ss='break';stim=5;S='surv';tL.id=null;tR.id=null;tR.act=0;tA.id=null;
+};
+window.tapAbility=function(){if(ab.cd>0||ab.t>0)return;ab.cd=15-sv.P.cdr*2;ab.t=5;};
+
+function sB(){var k=Object.keys(BSS),b=BSS[k[Math.floor(Math.random()*k.length)]];en.push({x:W/2,y:150,r:b.r,hp:b.hp,mh:b.hp,s:b.s,d:b.d,c:b.c,sc:b.sc,hit:0,r:b.r,st:0,boss:1});sDie();}
+function sW(){var cnt=5+Math.floor(sw*2);for(var i=0;i<cnt;i++)sE();if(sw%5===0)sB();ss='wave';}
+function sE(){var k=Object.keys(ETS),b=ETS[k[Math.floor(Math.random()*k.length)]],side=Math.floor(Math.random()*4),X,Y,pd=50;
+  if(side===0){X=Math.random()*W;Y=-pd;}else if(side===1){X=W+pd;Y=Math.random()*H;}else if(side===2){X=Math.random()*W;Y=H+pd;}else{X=-pd;Y=Math.random()*H;}
+  var hm=1;if(M==='surv')hm=1+sw*0.5;
+  en.push({x:X,y:Y,r:b.r,hp:b.hp*hm,mh:b.hp*hm,s:b.s*(1+sw*0.1),d:b.d*(1+sw*0.2),c:b.c,sc:b.sc,hit:0,t:b.t,st:0,r:b.t==='r'});}
+function boom(x,y,c,n){n=n||10;for(var i=0;i<n;i++){var a=Math.random()*Math.PI*2,s=40+Math.random()*200;pt.push({x:x,y:y,vx:Math.cos(a)*s,vy:Math.sin(a)*s,r:2+Math.random()*4,l:0.5,c:c});}}
+
+function openCrate(t){
+  if(sv.Cr[t]<=0)return;sv.Cr[t]--;
+  var r=Math.random(),rew='',rc='#fff';
+  if(t==='s'){if(r<0.6){var c=100+Math.floor(Math.random()*200);sv.coins+=c;rew=c+" Монет";rc='#f1c40f';}else if(r<0.9){sv.C.heal++;rew="Аптечка";rc='#e74c3c';}else{sv.Cr.m++;rew="Средний Ящик!";rc='#2980b9';}}
+  else if(t==='m'){if(r<0.5){var c=500+Math.floor(Math.random()*500);sv.coins+=c;rew=c+" Монет";rc='#f1c40f';}else{var w=Object.keys(WPS),nw=w[Math.floor(Math.random()*w.length)];if(sv.oW.indexOf(nw)===-1){sv.oW.push(nw);rew="Оружие: "+WPS[nw].n;rc='#2ecc71';}else{sv.coins+=1000;rew="1000 Монет";rc='#f1c40f';}}}
+  else{if(r<0.3){var c=2000+Math.floor(Math.random()*1000);sv.coins+=c;rew=c+" Монет";rc='#f1c40f';}else{var s=Object.keys(SKS),ns=s[Math.floor(Math.random()*s.length)];if(sv.oS.indexOf(ns)===-1){sv.oS.push(ns);rew="Скин: "+SKS[ns].n;rc='#3498db';}else{sv.coins+=3000;rew="3000 Монет";rc='#f1c40f';}}}
+  canim.act=1;canim.t=2.5;canim.rew=rew;canim.c=rc;save();sLoot();
+}
+
+c.addEventListener('touchstart',function(e){
+  e.preventDefault();initA();
+  for(var i=0;i<e.changedTouches.length;i++){
+    var t=e.changedTouches[i],pos=cp(t.clientX,t.clientY);
+    if(S!=='play'&&S!=='surv'){tap(pos.x,pos.y);continue;}
+    if(pos.x<W/2&&tL.id===null)tL.id=t.identifier;
+    else if(pos.y<H-150&&pos.x>=W/2&&tA.id===null){tA.id=t.identifier;window.tapAbility();}
+    else if(pos.x>=W/2&&tR.id===null){tR.id=t.identifier;tR.act=1;}
+  }
+},{passive:false});
+c.addEventListener('touchmove',function(e){
+  e.preventDefault();
+  for(var i=0;i<e.changedTouches.length;i++){
+    var t=e.changedTouches[i],pos=cp(t.clientX,t.clientY);
+    if(t.identifier===tL.id){var dx=pos.x-LJ.x,dy=pos.y-LJ.y,l=Math.sqrt(dx*dx+dy*dy);if(l>LJ.R){dx=dx/l*LJ.R;dy=dy/l*LJ.R;}tL.dx=dx;tL.dy=dy;tL.nx=dx/LJ.R;tL.ny=dy/LJ.R;}
+    if(t.identifier===tR.id){var dx2=pos.x-RJ.x,dy2=pos.y-RJ.y,l2=Math.sqrt(dx2*dx2+dy2*dy2);if(l2>RJ.R){dx2=dx2/l2*RJ.R;dy2=dy2/l2*RJ.R;}tR.dx=dx2;tR.dy=dy2;}
+  }
+},{passive:false});
+function endT(e){e.preventDefault();for(var i=0;i<e.changedTouches.length;i++){var t=e.changedTouches[i];if(t.identifier===tL.id){tL.id=null;tL.dx=0;tL.dy=0;tL.nx=0;tL.ny=0;}if(t.identifier===tR.id){tR.id=null;tR.act=0;tR.dx=0;tR.dy=0;}if(t.identifier===tA.id){tA.id=null;}}}
+c.addEventListener('touchend',endT,{passive:false});c.addEventListener('touchcancel',endT,{passive:false});
+function tap(px,py){for(var i=0;i<bts.length;i++){var b=bts[i];if(px>=b.x&&px<=b.x+b.w&&py>=b.y&&py<=b.y+b.h){sClick();b.cb();return;}}}
+
+function update(dt){
+  if(shk>0)shk-=dt;if(ab.t>0)ab.t-=dt;if(ab.cd>0)ab.cd-=dt;if(p.fr>0)p.fr-=dt;if(p.sp>0)p.sp-=dt;
+  var dx=tL.nx,dy=tL.ny,l=Math.sqrt(dx*dx+dy*dy);if(l>1){dx/=l;dy/=l;}
+  var cs=p.s*(p.sp>0?2:1);
+  var nx=p.x+dx*cs*dt,ny=p.y+dy*cs*dt;
+  for(var i=0;i<obs.length;i++){var d=dist(nx,ny,obs[i].x,obs[i].y);if(d<p.r+obs[i].r){var ov=p.r+obs[i].r-d;var an=Math.atan2(ny-obs[i].y,nx-obs[i].x);nx+=Math.cos(an)*ov;ny+=Math.sin(an)*ov;}}
+  p.x=clamp(nx,p.r,W-p.r);p.y=clamp(ny,p.r,H-p.r);
+  if(p.inv>0)p.inv-=dt;
+  if(tR.act){var tl=Math.sqrt(tR.dx*tR.dx+tR.dy*tR.dy);if(tl>12){p.ax=tR.dx/tl;p.ay=tR.dy/tl;}}
+  p.cd-=dt;
+  if(tR.act&&p.cd<=0){
+    p.cd=p.wp.cd;var ang=Math.atan2(p.ay,p.ax);
+    var dmg=p.dmg*(Math.random()<sv.P.crit*0.1?2:1);
+    if(p.wp.t==='melee')bul.push({x:p.x,y:p.y,vx:Math.cos(ang)*600,vy:Math.sin(ang)*600,r:18,l:0.25,d:dmg,c:p.wp.c,pierce:1});
+    else if(p.wp.t==='arc'){for(var k=-1;k<=1;k++)bul.push({x:p.x,y:p.y,vx:Math.cos(ang+k*0.3)*500,vy:Math.sin(ang+k*0.3)*500,r:14,l:0.4,d:dmg,c:p.wp.c});}
+    else if(p.wp.t==='multi'){for(var k=-1;k<=1;k++)bul.push({x:p.x,y:p.y,vx:Math.cos(ang+k*0.2)*800,vy:Math.sin(ang+k*0.2)*800,r:8,l:1,d:dmg,c:p.wp.c});}
+    else if(p.wp.t==='magic'){bul.push({x:p.x,y:p.y,vx:Math.cos(ang)*500,vy:Math.sin(ang)*500,r:20,l:1.5,d:dmg,c:p.wp.c,pierce:1});}
+    if(sv.P.double>0)bul.push({x:p.x,y:p.y,vx:Math.cos(ang+0.2)*600,vy:Math.sin(ang+0.2)*600,r:8,l:1,d:dmg,c:p.wp.c});
+    sShoot();
+  }
+  if(M==='surv'){
+    if(ss==='break'){stim-=dt;if(stim<=0){sW();ss='wave';}}
+    else{st+=dt;if(en.length===0){ss='break';stim=5;sw++;sv.coins+=50+sw*15;save();}}
+  }
+  if(M==='play'&&toSpawn>0&&en.length<8&&Math.random()<0.03){sE();toSpawn--;}
+  for(var i=bul.length-1;i>=0;i--){var b=bul[i];b.x+=b.vx*dt;b.y+=b.vy*dt;b.l-=dt;if(b.l<=0||b.x<-50||b.x>W+50||b.y<-50||b.y>H+50){bul.splice(i,1);continue;}for(var j=0;j<obs.length;j++){if(dist(b.x,b.y,obs[j].x,obs[j].y)<obs[j].r){boom(b.x,b.y,'#888');if(!b.pierce)bul.splice(i,1);break;}}}
+  for(var i=en.length-1;i>=0;i--){
+    var e=en[i];if(e.hit>0)e.hit-=dt;var ax=p.x-e.x,ay=p.y-e.y,d=Math.sqrt(ax*ax+ay*ay)||1;
+    e.x=clamp(e.x,e.r,W-e.r);e.y=clamp(e.y,e.r,H-e.r);
+    if(p.fr>0){}else if(e.r){
+      if(d>250){e.x+=ax/d*e.s*dt;e.y+=ay/d*e.s*dt;}else if(d<150){e.x-=ax/d*e.s*dt;e.y-=ay/d*e.s*dt;}else{e.x-=ax/d*10*dt;e.y-=ay/d*10*dt;}
+      e.st-=dt;if(e.st<=0){e.st=2.5;var ea=Math.atan2(ay,ax);eb.push({x:e.x,y:e.y,vx:Math.cos(ea)*300,vy:Math.sin(ea)*300,r:8,l:3,d:e.d,c:'#3498db'});}
+    }else{e.x+=ax/d*e.s*dt;e.y+=ay/d*e.s*dt;}
+    if(d<e.r+p.r&&p.inv<=0&&ab.t<=0){p.hp-=e.d*(1-sv.P.armor*0.1);p.inv=1;shk=0.3;shkI=10;sHit();}
+    for(var j=bul.length-1;j>=0;j--){var b=bul[j];if(dist(b.x,b.y,e.x,e.y)<e.r+b.r){
+      if(!b.pierce)bul.splice(j,1);e.hp-=b.d;e.hit=0.1;boom(b.x,b.y,e.c,5);
+      if(e.hp<=0){
+        Sc+=e.sc;boom(e.x,e.y,e.c,20);en.splice(i,1);sLoot();
+        if(sv.P.vamp>0)p.hp=Math.min(p.mh,p.hp+sv.P.vamp*2);
+        if(sv.quest&&sv.quest.t==='kill'&&!sv.quest.cl)sv.quest.p++;
+        save();
+        if(Math.random()<0.2)pck.push({x:e.x,y:e.y,r:12,t:'h',l:10});
+        if(Math.random()<0.4)pck.push({x:e.x,y:e.y,r:10,t:'c',l:10});
+        break;
+      }
+    }}
+  }
+  for(var i=eb.length-1;i>=0;i--){var b=eb[i];b.x+=b.vx*dt;b.y+=b.vy*dt;b.l-=dt;if(b.l<=0){eb.splice(i,1);continue;}if(dist(b.x,b.y,p.x,p.y)<b.r+p.r&&p.inv<=0&&ab.t<=0){p.hp-=b.d*(1-sv.P.armor*0.1);p.inv=1;shk=0.3;sHit();eb.splice(i,1);}}
+  for(var i=pck.length-1;i>=0;i--){var pk=pck[i];pk.l-=dt;if(pk.l<=0){pck.splice(i,1);continue;}if(dist(pk.x,pk.y,p.x,p.y)<pk.r+p.r+15){if(pk.t==='h'){p.hp=Math.min(p.mh,p.hp+40);aT('+40 HP',p.x,p.y-20,'#2ecc71');}else{sv.coins+=20;aT('+20',p.x,p.y-20,'#f1c40f');}sLoot();pck.splice(i,1);}}
+  for(var i=pt.length-1;i>=0;i--){var pp=pt[i];pp.x+=pp.vx*dt;pp.y+=pp.vy*dt;pp.l-=dt;if(pp.l<=0)pt.splice(i,1);}
+  for(var i=txt.length-1;i>=0;i--){txt[i].y-=40*dt;txt[i].l-=dt;if(txt[i].l<=0)txt.splice(i,1);}
+  if(p.hp<=0){
+    if(sv.C.revive>0){sv.C.revive--;p.hp=p.mh*0.5;p.inv=2;save();aT('ВОЗРОЖДЕНИЕ!',p.x,p.y-40,'#e74c3c');}
+    else{shk=0;sDie();if(M==='surv'){if(st>sv.best){sv.best=st;save();}S='survOver';}else S='over';}
+  }else if(M==='play'&&toSpawn===0&&en.length===0){
+    CE=100+L*20;sv.coins+=CE;if(L>=sv.mLvl)sv.mLvl=L+1;
+    if(sv.quest&&sv.quest.t==='lvl'&&!sv.quest.cl)sv.quest.p++;
+    save();shk=0;S='clear';
+  }
+}
+
+function dBG(){var g=x.createLinearGradient(0,0,0,H);g.addColorStop(0,'#0f111a');g.addColorStop(1,'#1c1f2b');x.fillStyle=g;x.fillRect(0,0,W,H);x.strokeStyle='rgba(255,255,255,0.03)';x.lineWidth=1;for(var i=0;i<W;i+=60){x.beginPath();x.moveTo(i,0);x.lineTo(i,H);x.stroke();}for(var i=0;i<H;i+=60){x.beginPath();x.moveTo(0,i);x.lineTo(W,i);x.stroke();}}
+function dBtn(x1,y1,w,h,txt,cb){
+  x.fillStyle='#800000';x.fillRect(x1+4,y1+4,w,h);x.fillStyle='#000';x.fillRect(x1-4,y1-4,w+8,h+8);x.fillStyle='#ff3333';x.fillRect(x1,y1,w,h);x.fillStyle='#ff6666';x.fillRect(x1+4,y1+4,w-8,6);x.fillStyle='#aa0000';x.fillRect(x1,y1+h-8,w,8);
+  x.fillStyle='#000';x.font='bold 20px "Courier New",monospace';x.textAlign='center';x.textBaseline='middle';x.fillText(txt,x1+w/2,y1+h/2);
+  bts.push({x:x1-4,y:y1-4,w:w+8,h:h+8,cb:cb});
+}
+function dE(e){x.save();x.translate(e.x,e.y);x.fillStyle='rgba(0,0,0,0.5)';x.beginPath();x.ellipse(0,e.r*0.8,e.r*1.2,e.r*0.6,0,0,7);x.fill();var bob=Math.sin(Date.now()/150+e.x)*2;x.translate(0,bob);x.fillStyle=e.hit>0?'#fff':e.c;if(p.fr>0)x.fillStyle='#00ffff';
+  if(e.boss){x.beginPath();x.arc(0,0,e.r,0,7);x.fill();x.fillStyle='#111';x.beginPath();x.arc(-e.r*0.4,-e.r*0.2,e.r*0.2,0,7);x.fill();x.beginPath();x.arc(e.r*0.4,-e.r*0.2,e.r*0.2,0,7);x.fill();x.fillStyle='#f1c40f';x.beginPath();x.moveTo(-e.r*0.6,e.r*0.4);x.lineTo(0,e.r*0.8);x.lineTo(e.r*0.6,e.r*0.4);x.fill();}
+  else if(e.t==='f'){x.beginPath();x.arc(0,0,e.r,0,7);x.fill();x.beginPath();x.moveTo(-e.r,0);x.lineTo(-e.r*2,-e.r*1.5);x.lineTo(-e.r,-e.r);x.fill();x.beginPath();x.moveTo(e.r,0);x.lineTo(e.r*2,-e.r*1.5);x.lineTo(e.r,-e.r);x.fill();}
+  else if(e.r){x.fillRect(-e.r,-e.r,e.r*2,e.r*2);x.fillStyle='#fff';x.fillRect(-e.r*0.5,-e.r*0.5,e.r,e.r);x.fillStyle='#000';x.fillRect(0,-e.r*1.2,e.r*0.5,e.r*2.4);}
+  else{x.fillRect(-e.r,-e.r,e.r*2,e.r*2);x.fillStyle='#111';x.fillRect(-e.r*0.6,-e.r*0.4,e.r*0.4,e.r*0.4);x.fillRect(e.r*0.2,-e.r*0.4,e.r*0.4,e.r*0.4);}x.restore();
+}
+function dP(){
+  x.save();x.translate(p.x,p.y);if(ab.t>0){x.fillStyle='rgba(231,76,60,0.3)';x.beginPath();x.arc(0,0,35,0,7);x.fill();x.strokeStyle='#e74c3c';x.lineWidth=3;x.stroke();}
+  x.fillStyle='rgba(0,0,0,0.5)';x.beginPath();x.ellipse(0,16,16,8,0,0,7);x.fill();
+  var c=SKS[sv.eS].c,bob=(tL.nx!==0||tL.ny!==0)?Math.sin(Date.now()/100)*3:0;x.translate(0,bob);
+  if(sv.eS==='none'){x.fillStyle=c;x.fillRect(-12,-12,24,24);x.fillStyle='#bdc3c7';x.beginPath();x.arc(0,-8,12,Math.PI,0);x.fill();x.fillStyle='#111';x.fillRect(-8,-12,16,4);x.fillStyle='#e74c3c';x.fillRect(-18,-4,6,16);}
+  else if(sv.eS==='neon'){x.fillStyle=c;x.beginPath();x.arc(0,0,16,0,7);x.fill();x.fillStyle='#111';x.fillRect(-10,-5,20,6);x.fillStyle='#fff';x.fillRect(5,-4,4,4);}
+  else if(sv.eS==='robot'){x.fillStyle=c;x.fillRect(-14,-14,28,28);x.fillStyle='#e74c3c';x.fillRect(-8,-4,16,6);x.fillStyle='#000';x.fillRect(-10,-10,4,4);x.fillRect(6,-10,4,4);}
+  else{x.fillStyle=c;x.beginPath();x.arc(0,0,18,0,7);x.fill();x.fillStyle='#111';x.beginPath();x.arc(-5,-5,3,0,7);x.fill();x.beginPath();x.arc(5,-5,3,0,7);x.fill();}
+  x.strokeStyle='#fff';x.lineWidth=4;x.beginPath();x.moveTo(0,0);x.lineTo(Math.cos(Math.atan2(p.ay,p.ax))*25,Math.sin(Math.atan2(p.ay,p.ax))*25);x.stroke();x.restore();
+}
+
+function draw(){
+  var sx=0,sy=0;if(shk>0){sx=(Math.random()-0.5)*shkI;sy=(Math.random()-0.5)*shkI;}x.save();x.translate(sx,sy);bts=[];
+  if(canim.act){
+    var g=x.createLinearGradient(0,0,0,H);g.addColorStop(0,'#0a0b10');g.addColorStop(1,'#2a1b3d');x.fillStyle=g;x.fillRect(0,0,W,H);
+    x.textAlign='center';x.textBaseline='middle';x.fillStyle='#f1c40f';x.font='bold 40px Arial';x.fillText('ОТКРЫТИЕ...',W/2,80);
+    if(canim.t>0.5){var it=['100 Монет','Оружие','Скин','1000 Монет','Средний Ящик','3000 Монет'],id=Math.floor(Date.now()/100)%it.length;x.fillStyle='#fff';x.font='bold 30px Arial';x.fillText(it[id],W/2,H/2);}
+    else{x.fillStyle=canim.c;x.font='bold 40px Arial';x.fillText('ВЫПАЛО:',W/2,H/2-40);x.fillStyle='#fff';x.fillText(canim.rew,W/2,H/2+20);}
+    x.restore();return;
+  }
+  if(S==='menu'){
+    var g=x.createLinearGradient(0,0,0,H);g.addColorStop(0,'#0a0b10');g.addColorStop(1,'#2a1b3d');x.fillStyle=g;x.fillRect(0,0,W,H);
+    for(var i=0;i<50;i++){var px=(i*97)%W,py=(Date.now()/20+i*50)%H;x.fillStyle='rgba(255,255,255,0.2)';x.fillRect(px,py,2,2);}
+    x.textAlign='center';x.textBaseline='middle';x.fillStyle='#f1c40f';x.font='bold 64px Arial';x.fillText('ISLAND RPG',W/2,60);
+    dBtn(W/2-150,130,300,60,'КАМПАНИЯ',function(){S='map';});
+    dBtn(W/2-150,210,300,60,'ВЫЖИВАНИЕ',function(){startSurv();});
+    dBtn(W/2-150,290,300,60,'МАГАЗИН',function(){S='shop';});
+    dBtn(W/2-150,370,300,60,'ИНВЕНТАРЬ',function(){S='inv';});
+    dBtn(W/2-150,450,300,60,'ЗАДАНИЯ',function(){S='quests';});
+    dBtn(W-140,20,120,40,'АККАУНТ',function(){S='settings';});
+    x.fillStyle='#fff';x.font='22px Arial';x.fillText('Монеты: '+sv.coins,W/2,H-20);x.restore();return;
+  }
+  if(S==='paused'){
+    dBG();for(var i=0;i<en.length;i++)dE(en[i]);dP();
+    x.fillStyle='rgba(0,0,0,0.85)';x.fillRect(0,0,W,H);
+    x.textAlign='center';x.textBaseline='middle';x.fillStyle='#f1c40f';x.font='bold 50px Arial';x.fillText('ПАУЗА',W/2,H/2-80);
+    dBtn(W/2-120,H/2,240,60,'ПРОДОЛЖИТЬ',function(){S=M==='surv'?'surv':'play';});
+    dBtn(W/2-120,H/2+80,240,50,'В МЕНЮ',function(){S='menu';});x.restore();return;
+  }
+  if(S==='quests'){
+    dBG();x.textAlign='center';x.textBaseline='middle';x.fillStyle='#9b59b6';x.font='bold 34px Arial';x.fillText('ЗАДАНИЯ',W/2,40);
+    x.fillStyle='#fff';x.font='20px Arial';
+    if(sv.quest){x.fillText(sv.quest.x,W/2,120);x.fillText('Прогресс: '+Math.min(sv.quest.p,sv.quest.tg)+' / '+sv.quest.tg,W/2,160);
+      if(sv.quest.p>=sv.quest.tg&&!sv.quest.cl){dBtn(W/2-120,220,240,50,'ЗАБРАТЬ',function(){sv.quest.cl=1;sv.Cr.s++;save();alert('Награда получена!');});}
+      else if(sv.quest.cl){x.fillStyle='#2ecc71';x.fillText('ВЫПОЛНЕНО',W/2,240);}}
+    dBtn(W/2-100,H-60,200,40,'НАЗАД',function(){S='menu';});x.restore();return;
+  }
+  if(S==='map'){
+    dBG();x.textAlign='center';x.textBaseline='middle';x.fillStyle='#fff';x.font='bold 30px Arial';x.fillText('КАМПАНИЯ',W/2,40);
+    var sl=Math.max(1,Math.floor((sv.mLvl-1)/12)*12+1);
+    for(var i=0;i<12;i++){
+      var lv=sl+i,cx=W/2-270+(i%4)*180,cy=140+Math.floor(i/4)*100,lk=(lv>sv.mLvl);
+      x.fillStyle=lk?'#2c3e50':(lv===sv.mLvl?'#e74c3c':'#2ecc71');x.beginPath();if(x.roundRect)x.roundRect(cx-45,cy-35,90,70,15);else x.rect(cx-45,cy-35,90,70);x.fill();
+      x.fillStyle='#fff';x.font='bold 24px Arial';x.fillText(lv,cx,cy+5);
+      if(!lk)(function(l){bts.push({x:cx-45,y:cy-35,w:90,h:70,cb:function(){startLvl(l);}});})(lv);
+    }
+    dBtn(W/2-100,H-60,200,40,'НАЗАД',function(){S='menu';});xnu';});x.restore();return;
+    }
+    if(S==='shop'){
+      dBG();x.textAlign='center';x.textBaseline='middle';x.fillStyle='#f39c12';x.font='bold 34px Arial';x.fillText('МАГАЗИН ('+sv.coins+')',W/2,30);
+      dBtn(40,70,180,40,'ОРУЖИЕ',function(){tab='weapons';});dBtn(230,70,180,40,'СКИНЫ',function(){tab='skins';});dBtn(420,70,180,40,'ПРЕДМЕТЫ',function(){tab='items';});dBtn(610,70,180,40,'ЯЩИКИ',function(){tab='crates';});
+      if(tab==='weapons'){var w=Object.keys(WPS);for(var i=0;i<w.length;i++){var wx=80+i*200,own=sv.oW.indexOf(w[i])!==-1;x.fillStyle='#222';x.fillRect(wx,140,160,80);x.fillStyle='#fff';x.font='16px Arial';x.fillText(WPS[w[i]].n,wx+80,170);if(!own){x.fillStyle='#f1c40f';x.fillRect(wx+30,190,100,25);x.fillStyle='#000';x.fillText(WPS[w[i]].p,wx+80,202);(function(id,c){bts.push({x:wx+30,y:190,w:100,h:25,cb:function(){if(sv.coins>=c){sv.coins-=c;sv.oW.push(id);save();}}});})(w[i],WPS[w[i]].p);}else{x.fillStyle='#2ecc71';x.fillText('КУПЛЕНО',wx+80,210);}}}
+      else if(tab==='skins'){var s=Object.keys(SKS);for(var i=0;i<s.length;i++){var sx=60+i*180,own=sv.oS.indexOf(s[i])!==-1;x.fillStyle='#222';x.fillRect(sx,140,160,80);x.fillStyle=SKS[s[i]].c;x.beginPath();x.arc(sx+80,170,20,0,7);x.fill();x.fillStyle='#fff';x.fillText(SKS[s[i]].n,sx+80,210);if(!own){x.fillStyle='#f1c40f';x.fillRect(sx+30,230,100,25);x.fillStyle='#000';x.fillText(SKS[s[i]].p,sx+80,242);(function(id,c){bts.push({x:sx+30,y:230,w:100,h:25,cb:function(){if(sv.coins>=c){sv.coins-=c;sv.oS.push(id);save();}}});})(s[i],SKS[s[i]].p);}}}
+      else if(tab==='items'){for(var i=0;i<ITM.length;i++){var it=ITM[i],ix=30+(i%5)*180,iy=120+Math.floor(i/5)*100;x.fillStyle='#222';x.fillRect(ix,iy,160,80);x.fillStyle=it.c;x.beginPath();x.arc(ix+80,iy+25,15,0,7);x.fill();x.fillStyle='#fff';x.font='14px';x.fillText(it.n,ix+80,iy+50);x.fillStyle='#f1c40f';x.fillRect(ix+30,iy+60,100,20);x.fillStyle='#000';x.font='12px';x.fillText(it.p,ix+80,iy+70);(function(item){bts.push({x:ix+30,y:iy+60,w:100,h:20,cb:function(){if(sv.coins>=item.p){sv.coins-=item.p;if(item.t==='p')sv.P[item.i]++;else sv.C[item.i]++;save();alert('Куплено: '+item.n);}}});})(it);}}
+      else{var crs=Object.keys(CRS);for(var i=0;i<crs.length;i++){var crx=100+i*240,cr=CRS[crs[i]];x.fillStyle='#222';x.fillRect(crx,140,200,120);x.fillStyle=cr.c;x.fillRect(crx+50,160,100,40);x.fillStyle='#fff';x.font='20px Arial';x.fillText(cr.n,crx+100,220);x.fillStyle='#f1c40f';x.fillRect(crx+50,240,100,25);x.fillStyle='#000';x.font='16px';x.fillText(cr.p,crx+100,252);(function(id,c){bts.push({x:crx+50,y:240,w:100,h:25,cb:function(){if(sv.coins>=c){sv.coins-=c;sv.Cr[id]++;save();alert('Куплено!');}}});})(crs[i],cr.p);}}
+      dBtn(W/2-100,H-60,200,40,'НАЗАД',function(){S='menu';});x.restore();return;
+    }
+    if(S==='inv'){
+      dBG();x.textAlign='center';x.textBaseline='middle';x.fillStyle='#3498db';x.font='bold 34px Arial';x.fillText('ИНВЕНТАРЬ',W/2,30);
+      dBtn(50,70,200,40,'ОРУЖИЕ',function(){itab='weapons';});dBtn(270,70,200,40,'СКИНЫ',function(){itab='skins';});dBtn(490,70,200,40,'ЯЩИКИ',function(){itab='crates';});
+      if(itab==='weapons'){for(var i=0;i<sv.oW.length;i++){var wx=100+i*160,eq=sv.eW===sv.oW[i];x.fillStyle=eq?'#2ecc71':'#34495e';x.fillRect(wx,150,140,60);x.fillStyle='#fff';x.fillText(WPS[sv.oW[i]].n,wx+70,180);(function(id){bts.push({x:wx,y:150,w:140,h:60,cb:function(){sv.eW=id;save();}});})(sv.oW[i]);}}
+      else if(itab==='skins'){for(var i=0;i<sv.oS.length;i++){var sx=100+i*160,eq=sv.eS===sv.oS[i];x.fillStyle=eq?'#2ecc71':'#34495e';x.fillRect(sx,150,140,80);x.fillStyle=SKS[sv.oS[i]].c;x.beginPath();x.arc(sx+70,175,15,0,7);x.fill();x.fillStyle='#fff';x.fillText(SKS[sv.oS[i]].n,sx+70,215);(function(id){bts.push({x:sx,y:150,w:140,h:80,cb:function(){sv.eS=id;save();}});})(sv.oS[i]);}}
+      else{var crs=Object.keys(sv.Cr),has=false;for(var i=0;i<crs.length;i++){if(sv.Cr[crs[i]]>0){has=true;var cx=200+i*200;x.fillStyle='#222';x.fillRect(cx,150,160,100);x.fillStyle=CRS[crs[i]].c;x.fillRect(cx+30,170,100,30);x.fillStyle='#fff';x.font='16px';x.fillText(CRS[crs[i]].n+' x'+sv.Cr[crs[i]],cx+80,225);dBtn(cx+30,250,100,30,'ОТКРЫТЬ',function(){openCrate(crs[i]);});}}if(!has){x.fillStyle='#fff';x.font='20px';x.fillText('Нет ящиков (купи в магазине)',W/2,H/2);}}
+      dBtn(W/2-100,H-60,200,40,'НАЗАД',function(){S='menu';});x.restore();return;
+    }
+    if(S==='settings'){
+      dBG();x.textAlign='center';x.textBaseline='middle';x.fillStyle='#95a5a6';x.font='bold 34px Arial';x.fillText('АККАУНТ',W/2,30);
+      dBtn(W/2-150,100,300,50,'ПОЛУЧИТЬ КОД',function(){var code=btoa(unescape(encodeURIComponent(JSON.stringify(sv))));prompt('КОД:',code);});
+      dBtn(W/2-150,170,300,50,'ЗАГРУЗИТЬ КОД',function(){var code=prompt('КОД:');if(code){try{var nS=JSON.parse(decodeURIComponent(escape(atob(code))));if(nS){sv=nS;save();alert('УСПЕХ!');}}catch(e){alert('ОШИБКА!');}}});
+      dBtn(W/2-100,H-60,200,40,'НАЗАД',function(){S='menu';});x.restore();return;
+    }
+    dBG();
+    if(S==='play'||S==='surv'){
+      dBtn(W-80,20,60,40,'||',function(){S='paused';});
+      x.fillStyle='#2c3e50';for(var i=0;i<obs.length;i++){x.beginPath();x.arc(obs[i].x,obs[i].y,obs[i].r,0,7);x.fill();x.strokeStyle='#1a252f';x.lineWidth=4;x.stroke();}
+      for(var i=0;i<pt.length;i++){var pp=pt[i];x.globalAlpha=pp.l/0.5;x.fillStyle=pp.c;x.beginPath();x.arc(pp.x,pp.y,pp.r,0,7);x.fill();}x.globalAlpha=1;
+      for(var i=0;i<pck.length;i++){var pk=pck[i];x.fillStyle=pk.t==='h'?'#e74c3c':'#f1c40f';x.beginPath();x.arc(pk.x,pk.y,pk.r,0,7);x.fill();}
+      for(var i=0;i<en.length;i++)dE(en[i]);
+      for(var i=0;i<bul.length;i++){var b=bul[i];x.fillStyle=b.c;x.beginPath();x.arc(b.x,b.y,b.r,0,7);x.fill();}
+      for(var i=0;i<eb.length;i++){x.fillStyle='#3498db';x.beginPath();x.arc(eb[i].x,eb[i].y,eb[i].r,0,7);x.fill();}
+      dP();
+      x.globalAlpha=0.15;x.fillStyle='#3498db';x.beginPath();x.arc(LJ.x,LJ.y,LJ.R,0,7);x.fill();x.globalAlpha=0.6;x.fillStyle='#ecf0f1';x.beginPath();x.arc(LJ.x+tL.dx,LJ.y+tL.dy,35,0,7);x.fill();
+      x.globalAlpha=0.15;x.fillStyle='#e74c3c';x.beginPath();x.arc(RJ.x,RJ.y,RJ.R,0,7);x.fill();x.globalAlpha=0.6;x.fillStyle='#ecf0f1';x.beginPath();x.arc(RJ.x+tR.dx,RJ.y+tR.dy,35,0,7);x.fill();
+      x.globalAlpha=0.8;x.fillStyle='#e74c3c';x.beginPath();x.arc(AJ.x,AJ.y,AJ.R,0,7);x.fill();x.fillStyle='#fff';x.font='12px Arial';x.fillText(ab.cd>0?Math.ceil(ab.cd):'ЮЗ',AJ.x,AJ.y);x.globalAlpha=1;
+      x.fillStyle='rgba(0,0,0,0.6)';x.fillRect(20,20,260,26);x.fillStyle='#e74c3c';x.fillRect(20,20,260*(p.hp/p.mh),26);
+      x.fillStyle='#fff';x.font='bold 16px Arial';x.textAlign='left';x.fillText('HP: '+Math.floor(p.hp),20,64);
+      x.textAlign='right';x.fillText('Монеты: '+sv.coins,W-100,36);
+      if(M==='surv'){x.fillStyle='#f1c40f';x.fillText('ВОЛНА '+sw,W-20,80);x.fillStyle='#fff';x.fillText('Время: '+st.toFixed(1),W-20,104);}
+      else{x.fillStyle='#fff';x.fillText('Уровень '+L,W-20,80);}
+    }
+    else if(S==='clear'){dO('ПОБЕДА','+'+CE+' монет','ДАЛЕЕ',function(){startLvl(L+1);});}
+    else if(S==='over'){dO('ПОРАЖЕНИЕ','Ты пал в бою','ЗАНОВО',function(){startLvl(L);});}
+    else if(S==='survOver'){dO('КОНЕЦ ВЫЖИВАНИЯ','Время: '+st.toFixed(1)+'с','ЗАНОВО',function(){startSurv();});}
+    x.restore();
+  }
+  function dO(t,s,bt,cb){x.fillStyle='rgba(0,0,0,0.85)';x.fillRect(0,0,W,H);x.textAlign='center';x.textBaseline='middle';x.fillStyle='#f1c40f';x.font='bold 50px Arial';x.fillText(t,W/2,H/2-80);x.fillStyle='#fff';x.font='24px Arial';x.fillText(s,W/2,H/2-10);dBtn(W/2-120,H/2+50,240,60,bt,cb);dBtn(W/2-120,H/2+130,240,50,'В МЕНЮ',function(){S='menu';});}
+  
+  setInterval(function(){
+    var n=Date.now(),dt=Math.min((n-lt)/1000,0.05);lt=n;
+    if(canim.act){canim.t-=dt;if(canim.t<=0){canim.act=0;S='menu';}}
+    if(S==='play'||S==='surv')update(dt);
+    draw();
+  },1000/60);
+</script>
+</body>
+</html>
